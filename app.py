@@ -192,7 +192,7 @@ if arquivo_xlsx:
         arquivo_print = st.file_uploader(
             f"Imagem {i + 1}", type=["png", "jpg", "jpeg"], key=f"print_{i}"
         )
-        legenda_print = st.text_input(f"Legenda (opcional)", key=f"legenda_{i}")
+        legenda_print = st.text_input("Legenda (opcional)", key=f"legenda_{i}")
         if arquivo_print is not None:
             st.image(arquivo_print, width=250)
             screenshots.append({"arquivo": arquivo_print, "legenda": legenda_print})
@@ -215,12 +215,26 @@ if arquivo_xlsx:
             f"Evidencias de teste {squad} {cenario} {caso_teste}"
         ) + ".docx"
 
+        st.session_state["documento_gerado"] = resultado.getvalue()
+        st.session_state["nome_arquivo_gerado"] = nome_arquivo
+
+    if "documento_gerado" in st.session_state:
         st.success("Documento gerado com sucesso.")
-        st.download_button(
+        baixou = st.download_button(
             label="Baixar documento",
-            data=resultado,
-            file_name=nome_arquivo,
+            data=st.session_state["documento_gerado"],
+            file_name=st.session_state["nome_arquivo_gerado"],
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="botao_download",
         )
+
+        if baixou:
+            for i in range(st.session_state.num_prints):
+                st.session_state.pop(f"print_{i}", None)
+                st.session_state.pop(f"legenda_{i}", None)
+            st.session_state.num_prints = 1
+            del st.session_state["documento_gerado"]
+            del st.session_state["nome_arquivo_gerado"]
+            st.rerun()
 else:
     st.info("Envie o arquivo .xlsx do Caderno de Testes para começar.")
