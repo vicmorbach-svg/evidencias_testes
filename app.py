@@ -11,9 +11,8 @@ from docx import Document
 TEMPLATE_PATH = Path("modelo/Evidencia_de_Testes_CORSAN_Modelo.docx")
 
 QA_NAMES = [
-    "Ana Silva",
-    "Bruno Souza",
-    "Carla Mendes",
+    "Victor Morbach",
+    "Aline Rodrigues Vieira Pinto",
 ]
 
 SHEET_NAME = "plano de teste"
