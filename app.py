@@ -4,207 +4,155 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from docx import Document
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches
 
-# ------------------------------------------------------------------
-# CONFIGURAÇÕES
-# ------------------------------------------------------------------
-TEMPLATE_PATH = Path("modelo/Evidencia_de_Testes_CORSAN_Modelo.docx")
+TEMPLATE_PATH = Path("modelo/Evidencia_de_Testes__CORSAN__Modelo.docx")
 
-QA_NAMES = [
-    "Victor Morbach",
-    "Aline Rodrigues Vieira Pinto",
-]
+QA_NAMES = ["Nome QA 1", "Nome QA 2", "Nome QA 3"]
 
-SHEET_NAME = "plano de teste"
-COL_PROCESSO = "Processos"
-COL_CASO_TESTE = "Caso de Teste"
-
-IMAGEM_LARGURA_POL = 6.0  # largura da imagem no documento, em polegadas
-
-# ------------------------------------------------------------------
-# FUNÇÕES AUXILIARES
-# ------------------------------------------------------------------
-def get_unique_cells(row):
-    """Remove repetições de célula causadas por merge horizontal."""
-    seen = set()
-    cells = []
-    for cell in row.cells:
-        if id(cell) not in seen:
-            seen.add(id(cell))
-            cells.append(cell)
-    return cells
-
-
-def normalize(text: str) -> str:
-    return text.strip().lower().rstrip(":").replace("*", "")
-
-
-def set_cell_text(cell, text: str):
-    """Escreve o texto na célula preservando a formatação existente."""
-    if cell.paragraphs:
-        paragraph = cell.paragraphs[0]
-        if paragraph.runs:
-            paragraph.runs[0].text = text
-            for extra_run in paragraph.runs[1:]:
-                extra_run.text = ""
-        else:
-            paragraph.add_run(text)
-        for extra_paragraph in cell.paragraphs[1:]:
-            extra_paragraph.text = ""
-    else:
-        cell.text = text
-
-
-def fill_fields(doc: Document, values: dict):
-    field_map = {normalize(k): v for k, v in values.items()}
-
-    for table in doc.tables:
-        for row in table.rows:
-            unique_cells = get_unique_cells(row)
-            for idx, cell in enumerate(unique_cells):
-                label = normalize(cell.text)
-                if label in field_map and idx + 1 < len(unique_cells):
-                    set_cell_text(unique_cells[idx + 1], field_map[label])
-
-
-def add_evidencias(doc: Document, imagens: list):
-    """Adiciona um título 'Evidências' e as imagens (com legenda opcional) ao final do documento."""
-    if not imagens:
-        return
-
-    doc.add_page_break()
-
-    titulo = doc.add_paragraph()
-    run_titulo = titulo.add_run("Evidências")
-    run_titulo.bold = True
-    run_titulo.font.size = Pt(14)
-
-    for item in imagens:
-        nome = item["nome"]
-        legenda = item["legenda"]
-        conteudo = item["conteudo"]
-
-        doc.add_paragraph()  # espaçamento
-        paragrafo_imagem = doc.add_paragraph()
-        paragrafo_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_imagem = paragrafo_imagem.add_run()
-        run_imagem.add_picture(io.BytesIO(conteudo), width=Inches(IMAGEM_LARGURA_POL))
-
-        texto_legenda = legenda.strip() if legenda and legenda.strip() else nome
-        paragrafo_legenda = doc.add_paragraph()
-        paragrafo_legenda.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_legenda = paragrafo_legenda.add_run(texto_legenda)
-        run_legenda.italic = True
-        run_legenda.font.size = Pt(10)
-
-
-def fill_document(template_bytes: bytes, values: dict, imagens: list) -> bytes:
-    doc = Document(io.BytesIO(template_bytes))
-    fill_fields(doc, values)
-    add_evidencias(doc, imagens)
-
-    output = io.BytesIO()
-    doc.save(output)
-    return output.getvalue()
-
-
-@st.cache_data
-def load_excel(file_bytes: bytes) -> pd.DataFrame:
-    return pd.read_excel(io.BytesIO(file_bytes), sheet_name=SHEET_NAME)
-
-
-# ------------------------------------------------------------------
-# APP
-# ------------------------------------------------------------------
 st.set_page_config(page_title="Gerador de Evidência de Testes", layout="centered")
 st.title("Gerador de Evidência de Testes - CORSAN")
 
-xlsx_file = st.file_uploader(
-    "Envie o Caderno de Testes (.xlsx)", type=["xlsx"], key="xlsx_uploader"
-)
 
-template_file = None
-if not TEMPLATE_PATH.exists():
-    st.warning(
-        "Modelo padrão não encontrado no servidor. Envie o arquivo .docx do modelo."
-    )
-    template_file = st.file_uploader(
-        "Envie o modelo do documento (.docx)", type=["docx"], key="docx_uploader"
-    )
+def get_unique_cells(row):
+    """Remove células repetidas causadas por merge horizontal, mantendo a ordem."""
+    unique = []
+    seen_ids = set()
+    for cell in row.cells:
+        if id(cell._tc) not in seen_ids:
+            seen_ids.add(id(cell._tc))
+            unique.append(cell)
+    return unique
 
-if xlsx_file is not None:
-    df = load_excel(xlsx_file.getvalue())
 
-    casos_teste = sorted(df[COL_CASO_TESTE].dropna().unique())
-    caso_teste = st.selectbox("Caso de Teste", casos_teste)
-
-    processos_relacionados = (
-        df.loc[df[COL_CASO_TESTE] == caso_teste, COL_PROCESSO].dropna().unique()
-    )
-
-    if len(processos_relacionados) == 1:
-        cenario = processos_relacionados[0]
-        st.text_input("Cenário", value=cenario, disabled=True)
-    elif len(processos_relacionados) > 1:
-        cenario = st.selectbox("Cenário", sorted(processos_relacionados))
+def set_cell_text(cell, texto):
+    """Escreve o texto na célula preservando a formatação do primeiro run, se existir."""
+    if cell.paragraphs and cell.paragraphs[0].runs:
+        run = cell.paragraphs[0].runs[0]
+        run.text = texto
+        for paragraph in cell.paragraphs[1:]:
+            for run_extra in paragraph.runs:
+                run_extra.text = ""
     else:
-        cenario = st.text_input("Cenário")
+        cell.text = texto
+
+
+def fill_labeled_field(document, label, valor):
+    """Procura o rótulo em qualquer tabela do documento e escreve o valor na célula seguinte."""
+    for table in document.tables:
+        for row in table.rows:
+            cells = get_unique_cells(row)
+            for idx, cell in enumerate(cells):
+                if cell.text.strip().upper() == label.upper():
+                    if idx + 1 < len(cells):
+                        set_cell_text(cells[idx + 1], valor)
+                    return True
+    return False
+
+
+def add_screenshots(document, screenshots):
+    """Insere as capturas de tela no final do documento, uma por página."""
+    if not screenshots:
+        return
+
+    document.add_page_break()
+    titulo = document.add_paragraph()
+    run = titulo.add_run("Evidências (Prints)")
+    run.bold = True
+
+    for i, arquivo in enumerate(screenshots, start=1):
+        document.add_paragraph(f"Print {i}: {arquivo.name}")
+        imagem = io.BytesIO(arquivo.getvalue())
+        document.add_picture(imagem, width=Inches(6))
+        if i < len(screenshots):
+            document.add_page_break()
+
+
+def fill_document(template_bytes, valores, screenshots):
+    document = Document(io.BytesIO(template_bytes))
+
+    for label, valor in valores.items():
+        if valor:
+            fill_labeled_field(document, label, valor)
+
+    add_screenshots(document, screenshots)
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+if not TEMPLATE_PATH.exists():
+    st.error(f"Modelo não encontrado em {TEMPLATE_PATH}. Coloque o arquivo .docx nesse caminho.")
+    st.stop()
+
+template_bytes = TEMPLATE_PATH.read_bytes()
+
+arquivo_xlsx = st.file_uploader("Envie o arquivo .xlsx do Caderno de Testes", type=["xlsx"])
+
+if arquivo_xlsx:
+    df = pd.read_excel(arquivo_xlsx)
+
+    # Cenário vem da coluna "Processos"
+    processos = df["Processos"].dropna().unique().tolist()
+    if len(processos) == 1:
+        cenario = processos[0]
+        st.write(f"Cenário: **{cenario}**")
+    else:
+        cenario = st.selectbox("Cenário", processos)
+
+    # Caso de Teste vem da coluna "Caso de Teste"
+    casos_teste = df["Caso de Teste"].dropna().unique().tolist()
+    if len(casos_teste) == 1:
+        caso_teste = casos_teste[0]
+        st.write(f"Caso de Teste: **{caso_teste}**")
+    else:
+        caso_teste = st.selectbox("Caso de Teste", casos_teste)
 
     qa = st.selectbox("QA", QA_NAMES)
     dev = st.text_input("DEV")
     ipc = st.text_input("IPC")
     squad = st.text_input("Squad", value="CORSAN")
 
-    st.subheader("Prints de tela (evidências)")
-    prints_upload = st.file_uploader(
-        "Envie os prints de tela",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-        key="prints_uploader",
-    )
+    st.divider()
+    st.subheader("Prints de tela")
 
-    imagens = []
-    if prints_upload:
-        for i, arquivo in enumerate(prints_upload):
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                st.image(arquivo, caption=arquivo.name, use_container_width=True)
-            with col2:
-                legenda = st.text_input(
-                    f"Legenda para '{arquivo.name}'",
-                    key=f"legenda_{i}",
-                )
-            imagens.append(
-                {
-                    "nome": arquivo.name,
-                    "legenda": legenda,
-                    "conteudo": arquivo.getvalue(),
-                }
-            )
+    if "num_prints" not in st.session_state:
+        st.session_state.num_prints = 1
 
-    gerar = st.button("Gerar documento")
+    col_add, col_remove = st.columns(2)
+    with col_add:
+        if st.button("+ Adicionar print"):
+            st.session_state.num_prints += 1
+    with col_remove:
+        if st.session_state.num_prints > 1 and st.button("- Remover último print"):
+            st.session_state.num_prints -= 1
 
-    if gerar:
-        if TEMPLATE_PATH.exists():
-            template_bytes = TEMPLATE_PATH.read_bytes()
-        elif template_file is not None:
-            template_bytes = template_file.getvalue()
-        else:
-            st.error("Nenhum modelo .docx disponível.")
-            st.stop()
+    screenshots = []
+    for i in range(st.session_state.num_prints):
+        arquivo_print = st.file_uploader(
+            f"Print {i + 1}",
+            type=["png", "jpg", "jpeg"],
+            key=f"print_{i}",
+        )
+        if arquivo_print is not None:
+            screenshots.append(arquivo_print)
+            st.image(arquivo_print, width=250)
 
+    st.divider()
+
+    if st.button("Gerar documento"):
         valores = {
             "Cenário": cenario,
             "Caso de Teste": caso_teste,
-            "IPC": ipc,
             "QA": qa,
             "DEV": dev,
+            "IPC": ipc,
             "Squad": squad,
         }
 
-        resultado = fill_document(template_bytes, valores, imagens)
+        resultado = fill_document(template_bytes, valores, screenshots)
 
         nome_arquivo = f"Evidencia_de_Testes_{caso_teste.split(' - ')[0]}.docx"
 
