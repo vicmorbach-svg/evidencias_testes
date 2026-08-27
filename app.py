@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 
 TEMPLATE_PATH = Path("modelo/Evidencia de Testes - CORSAN - Modelo.docx")
 
