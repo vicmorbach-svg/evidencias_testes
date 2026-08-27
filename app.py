@@ -178,6 +178,11 @@ if arquivo_xlsx:
     if "num_prints" not in st.session_state:
         st.session_state.num_prints = 1
 
+    if "uploader_version" not in st.session_state:
+        st.session_state.uploader_version = 0
+
+    v = st.session_state.uploader_version
+
     col_add, col_remove = st.columns(2)
     with col_add:
         if st.button("+ Adicionar print"):
@@ -190,9 +195,14 @@ if arquivo_xlsx:
     for i in range(st.session_state.num_prints):
         st.markdown(f"**Print {i + 1}**")
         arquivo_print = st.file_uploader(
-            f"Imagem {i + 1}", type=["png", "jpg", "jpeg"], key=f"print_{i}"
+            f"Imagem {i + 1}",
+            type=["png", "jpg", "jpeg"],
+            key=f"print_{i}_{v}",
         )
-        legenda_print = st.text_input("Legenda (opcional)", key=f"legenda_{i}")
+        legenda_print = st.text_input(
+            "Legenda (opcional)",
+            key=f"legenda_{i}_{v}",
+        )
         if arquivo_print is not None:
             st.image(arquivo_print, width=250)
             screenshots.append({"arquivo": arquivo_print, "legenda": legenda_print})
@@ -229,10 +239,8 @@ if arquivo_xlsx:
         )
 
         if baixou:
-            for i in range(st.session_state.num_prints):
-                st.session_state.pop(f"print_{i}", None)
-                st.session_state.pop(f"legenda_{i}", None)
             st.session_state.num_prints = 1
+            st.session_state.uploader_version += 1
             del st.session_state["documento_gerado"]
             del st.session_state["nome_arquivo_gerado"]
             st.rerun()
