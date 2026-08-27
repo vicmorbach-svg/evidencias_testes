@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 from docx.shared import Inches, Pt
+import re
 
 TEMPLATE_PATH = Path("modelo/Evidencia de Testes - CORSAN - Modelo.docx")
 
@@ -13,7 +14,10 @@ QA_NAMES = ["Victor Morbach", "Aline Rodrigues Vieira Pinto"]
 st.set_page_config(page_title="Gerador de Evidência de Testes", layout="centered")
 st.title("Gerador de Evidência de Testes - CORSAN")
 
-
+def sanitizar_nome_arquivo(texto: str) -> str:
+    """Remove caracteres inválidos para nomes de arquivo, mantendo espaços."""
+    return re.sub(r'[\\/:*?"<>|]', "", texto).strip()
+    
 def get_unique_cells(row):
     """Remove células repetidas causadas por merge horizontal, mantendo a ordem."""
     unique = []
@@ -172,7 +176,7 @@ if arquivo_xlsx:
 
         resultado = fill_document(template_bytes, valores, screenshots)
 
-        nome_arquivo = f"Evidencia_de_Testes_{caso_teste.split(' - ')[0]}.docx"
+        nome_arquivo = sanitizar_nome_arquivo(f"Evidencias de teste {squad} {cenario} {caso_teste}") + ".docx"
 
         st.success("Documento gerado com sucesso.")
         st.download_button(
