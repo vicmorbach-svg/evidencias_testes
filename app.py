@@ -6,6 +6,7 @@ import streamlit as st
 from docx import Document
 from docx.shared import Inches, Pt
 import re
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 TEMPLATE_PATH = Path("modelo/Evidencia de Testes - CORSAN - Modelo.docx")
 
