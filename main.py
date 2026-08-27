@@ -212,7 +212,7 @@ if arquivo_xlsx:
         resultado = fill_document(template_bytes, valores, status, screenshots)
 
         nome_arquivo = sanitize_filename(
-            f"Evidencias de teste {squad} {cenario} {caso_teste.split(' - ')[0]}"
+            f"Evidencias de teste {squad} {cenario} {caso_teste}"
         ) + ".docx"
 
         st.success("Documento gerado com sucesso.")
