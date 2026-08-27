@@ -4,6 +4,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # ------------------------------------------------------------------
 # CONFIGURAÇÕES
@@ -18,6 +20,8 @@ QA_NAMES = [
 SHEET_NAME = "plano de teste"
 COL_PROCESSO = "Processos"
 COL_CASO_TESTE = "Caso de Teste"
+
+IMAGEM_LARGURA_POL = 6.0  # largura da imagem no documento, em polegadas
 
 # ------------------------------------------------------------------
 # FUNÇÕES AUXILIARES
@@ -53,8 +57,7 @@ def set_cell_text(cell, text: str):
         cell.text = text
 
 
-def fill_document(template_bytes: bytes, values: dict) -> bytes:
-    doc = Document(io.BytesIO(template_bytes))
+def fill_fields(doc: Document, values: dict):
     field_map = {normalize(k): v for k, v in values.items()}
 
     for table in doc.tables:
@@ -64,6 +67,43 @@ def fill_document(template_bytes: bytes, values: dict) -> bytes:
                 label = normalize(cell.text)
                 if label in field_map and idx + 1 < len(unique_cells):
                     set_cell_text(unique_cells[idx + 1], field_map[label])
+
+
+def add_evidencias(doc: Document, imagens: list):
+    """Adiciona um título 'Evidências' e as imagens (com legenda opcional) ao final do documento."""
+    if not imagens:
+        return
+
+    doc.add_page_break()
+
+    titulo = doc.add_paragraph()
+    run_titulo = titulo.add_run("Evidências")
+    run_titulo.bold = True
+    run_titulo.font.size = Pt(14)
+
+    for item in imagens:
+        nome = item["nome"]
+        legenda = item["legenda"]
+        conteudo = item["conteudo"]
+
+        doc.add_paragraph()  # espaçamento
+        paragrafo_imagem = doc.add_paragraph()
+        paragrafo_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_imagem = paragrafo_imagem.add_run()
+        run_imagem.add_picture(io.BytesIO(conteudo), width=Inches(IMAGEM_LARGURA_POL))
+
+        texto_legenda = legenda.strip() if legenda and legenda.strip() else nome
+        paragrafo_legenda = doc.add_paragraph()
+        paragrafo_legenda.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_legenda = paragrafo_legenda.add_run(texto_legenda)
+        run_legenda.italic = True
+        run_legenda.font.size = Pt(10)
+
+
+def fill_document(template_bytes: bytes, values: dict, imagens: list) -> bytes:
+    doc = Document(io.BytesIO(template_bytes))
+    fill_fields(doc, values)
+    add_evidencias(doc, imagens)
 
     output = io.BytesIO()
     doc.save(output)
@@ -117,6 +157,33 @@ if xlsx_file is not None:
     ipc = st.text_input("IPC")
     squad = st.text_input("Squad", value="CORSAN")
 
+    st.subheader("Prints de tela (evidências)")
+    prints_upload = st.file_uploader(
+        "Envie os prints de tela",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key="prints_uploader",
+    )
+
+    imagens = []
+    if prints_upload:
+        for i, arquivo in enumerate(prints_upload):
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.image(arquivo, caption=arquivo.name, use_container_width=True)
+            with col2:
+                legenda = st.text_input(
+                    f"Legenda para '{arquivo.name}'",
+                    key=f"legenda_{i}",
+                )
+            imagens.append(
+                {
+                    "nome": arquivo.name,
+                    "legenda": legenda,
+                    "conteudo": arquivo.getvalue(),
+                }
+            )
+
     gerar = st.button("Gerar documento")
 
     if gerar:
@@ -137,7 +204,7 @@ if xlsx_file is not None:
             "Squad": squad,
         }
 
-        resultado = fill_document(template_bytes, valores)
+        resultado = fill_document(template_bytes, valores, imagens)
 
         nome_arquivo = f"Evidencia_de_Testes_{caso_teste.split(' - ')[0]}.docx"
 
