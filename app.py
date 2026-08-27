@@ -8,7 +8,7 @@ from docx.shared import Inches
 
 TEMPLATE_PATH = Path("modelo/Evidencia de Testes - CORSAN - Modelo.docx")
 
-QA_NAMES = ["Nome QA 1", "Nome QA 2", "Nome QA 3"]
+QA_NAMES = ["Victor Morbach", "Aline Rodrigues Vieira Pinto"]
 
 st.set_page_config(page_title="Gerador de Evidência de Testes", layout="centered")
 st.title("Gerador de Evidência de Testes - CORSAN")
@@ -51,21 +51,32 @@ def fill_labeled_field(document, label, valor):
 
 
 def add_screenshots(document, screenshots):
-    """Insere as capturas de tela no final do documento, uma por página."""
     if not screenshots:
-        return
+        return document
 
     document.add_page_break()
     titulo = document.add_paragraph()
-    run = titulo.add_run("Evidências (Prints)")
-    run.bold = True
+    run_titulo = titulo.add_run("Evidências (Prints)")
+    run_titulo.bold = True
+    run_titulo.font.size = Pt(14)
 
-    for i, arquivo in enumerate(screenshots, start=1):
-        document.add_paragraph(f"Print {i}: {arquivo.name}")
-        imagem = io.BytesIO(arquivo.getvalue())
-        document.add_picture(imagem, width=Inches(6))
-        if i < len(screenshots):
+    for idx, item in enumerate(screenshots, start=1):
+        arquivo = item["arquivo"]
+        legenda = item.get("legenda", "").strip()
+
+        arquivo.seek(0)
+        document.add_picture(arquivo, width=Inches(6))
+
+        legenda_paragrafo = document.add_paragraph()
+        legenda_run = legenda_paragrafo.add_run(
+            f"Print {idx}: {legenda}" if legenda else f"Print {idx}"
+        )
+        legenda_run.italic = True
+
+        if idx < len(screenshots):
             document.add_page_break()
+
+    return document
 
 
 def fill_document(template_bytes, valores, screenshots):
@@ -133,14 +144,19 @@ if arquivo_xlsx:
 
     screenshots = []
     for i in range(st.session_state.num_prints):
+        st.markdown(f"**Print {i + 1}**")
         arquivo_print = st.file_uploader(
-            f"Print {i + 1}",
+            f"Selecione a imagem do print {i + 1}",
             type=["png", "jpg", "jpeg"],
             key=f"print_{i}",
         )
+        legenda_print = st.text_input(
+            f"Comentário do print {i + 1} (opcional)",
+            key=f"legenda_{i}",
+        )
         if arquivo_print is not None:
-            screenshots.append(arquivo_print)
             st.image(arquivo_print, width=250)
+            screenshots.append({"arquivo": arquivo_print, "legenda": legenda_print})
 
     st.divider()
 
