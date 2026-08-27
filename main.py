@@ -11,13 +11,21 @@ TEMPLATE_PATH = Path("modelo/Evidencia de Testes - AE Contact - Modelo.docx")
 
 QA_NAMES = ["Claudio Henrique Ribeiro da Silva", "Keylane de SOuza Rodrigues", "Issac Freitas da Silva"]
 
+STATUS_OPCOES = ["Concluído", "Em andamento", "Bloqueado"]
+
+SHEET_NAME = "plano de teste"
+COL_PROCESSO = "Processos"
+COL_CASO_TESTE = "Caso de Teste"
+
+IMAGEM_LARGURA_POL = 6.0
+
 st.set_page_config(page_title="Gerador de Evidência de Testes", layout="centered")
 st.title("Gerador de Evidência de Testes - AE Contact")
 
-def sanitizar_nome_arquivo(texto: str) -> str:
-    """Remove caracteres inválidos para nomes de arquivo, mantendo espaços."""
-    return re.sub(r'[\\/:*?"<>|]', "", texto).strip()
-    
+
+# ------------------------------------------------------------------
+# FUNÇÕES AUXILIARES
+# ------------------------------------------------------------------
 def get_unique_cells(row):
     """Remove células repetidas causadas por merge horizontal, mantendo a ordem."""
     unique = []
@@ -34,103 +42,134 @@ def set_cell_text(cell, texto):
     if cell.paragraphs and cell.paragraphs[0].runs:
         run = cell.paragraphs[0].runs[0]
         run.text = texto
-        for paragraph in cell.paragraphs[1:]:
-            for run_extra in paragraph.runs:
-                run_extra.text = ""
+        for run_extra in cell.paragraphs[0].runs[1:]:
+            run_extra.text = ""
     else:
         cell.text = texto
 
 
-def fill_labeled_field(document, label, valor):
-    """Procura o rótulo em qualquer tabela do documento e escreve o valor na célula seguinte."""
-    for table in document.tables:
-        for row in table.rows:
-            cells = get_unique_cells(row)
-            for idx, cell in enumerate(cells):
-                if cell.text.strip().upper() == label.upper():
-                    if idx + 1 < len(cells):
-                        set_cell_text(cells[idx + 1], valor)
-                    return True
-    return False
+def sanitize_filename(nome):
+    """Remove caracteres inválidos para nomes de arquivo no Windows."""
+    return re.sub(r'[\\/:*?"<>|]', "", nome).strip()
 
 
-def add_screenshots(document, screenshots):
-    if not screenshots:
-        return document
+def fill_table(doc, valores):
+    """Percorre a tabela do modelo e preenche o valor ao lado de cada rótulo conhecido."""
+    table = doc.tables[0]
+    for row in table.rows:
+        cells = get_unique_cells(row)
+        for i, cell in enumerate(cells):
+            rotulo = cell.text.strip().upper()
+            if rotulo in valores and i + 1 < len(cells):
+                set_cell_text(cells[i + 1], valores[rotulo])
+    return table
 
-    document.add_page_break()
-    titulo = document.add_paragraph()
-    run_titulo = titulo.add_run("Evidências (Prints)")
-    run_titulo.bold = True
-    run_titulo.font.size = Pt(14)
 
+def set_status(doc, status_valor):
+    """Localiza o parágrafo 'STATUS:' e adiciona o valor escolhido ao lado."""
+    for paragraph in doc.paragraphs:
+        if "STATUS:" in paragraph.text.upper():
+            run = paragraph.add_run(f" {status_valor}")
+            run.bold = True
+            return paragraph
+    return None
+
+
+def add_screenshots_after(doc, anchor_element, screenshots):
+    """Insere os prints logo após o elemento âncora (ex.: parágrafo do STATUS),
+    sem quebra de página, mantendo a ordem de upload."""
+    current_anchor = anchor_element
     for idx, item in enumerate(screenshots, start=1):
         arquivo = item["arquivo"]
-        legenda = item.get("legenda", "").strip()
+        legenda = item.get("legenda", "")
 
-        arquivo.seek(0)
-        document.add_picture(arquivo, width=Inches(6))
-
-        legenda_paragrafo = document.add_paragraph()
-        legenda_run = legenda_paragrafo.add_run(
-            f"Print {idx}: {legenda}" if legenda else f"Print {idx}"
+        p_titulo = doc.add_paragraph()
+        run_titulo = p_titulo.add_run(
+            f"Print {idx} - {legenda}" if legenda else f"Print {idx}"
         )
-        legenda_run.italic = True
+        run_titulo.bold = True
+        run_titulo.font.size = Pt(11)
 
-        if idx < len(screenshots):
-            document.add_page_break()
+        p_imagem = doc.add_paragraph()
+        p_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_imagem = p_imagem.add_run()
+        arquivo.seek(0)
+        run_imagem.add_picture(arquivo, width=Inches(IMAGEM_LARGURA_POL))
 
-    return document
+        current_anchor.addnext(p_titulo._p)
+        current_anchor = p_titulo._p
+        current_anchor.addnext(p_imagem._p)
+        current_anchor = p_imagem._p
+
+    return doc
 
 
-def fill_document(template_bytes, valores, screenshots):
-    document = Document(io.BytesIO(template_bytes))
+def fill_document(template_bytes, valores, status_valor, screenshots):
+    doc = Document(io.BytesIO(template_bytes))
 
-    for label, valor in valores.items():
-        if valor:
-            fill_labeled_field(document, label, valor)
+    valores_upper = {k.upper(): v for k, v in valores.items()}
+    fill_table(doc, valores_upper)
 
-    add_screenshots(document, screenshots)
+    status_paragraph = set_status(doc, status_valor)
+    anchor = status_paragraph._p if status_paragraph is not None else doc.tables[0]._tbl
+
+    if screenshots:
+        add_screenshots_after(doc, anchor, screenshots)
 
     buffer = io.BytesIO()
-    document.save(buffer)
+    doc.save(buffer)
     buffer.seek(0)
-    return buffer.getvalue()
+    return buffer
 
 
+# ------------------------------------------------------------------
+# INTERFACE
+# ------------------------------------------------------------------
 if not TEMPLATE_PATH.exists():
-    st.error(f"Modelo não encontrado em {TEMPLATE_PATH}. Coloque o arquivo .docx nesse caminho.")
+    st.error(f"Modelo não encontrado em: {TEMPLATE_PATH}")
     st.stop()
 
-template_bytes = TEMPLATE_PATH.read_bytes()
+with open(TEMPLATE_PATH, "rb") as f:
+    template_bytes = f.read()
 
-arquivo_xlsx = st.file_uploader("Envie o arquivo .xlsx do Caderno de Testes", type=["xlsx"])
+arquivo_xlsx = st.file_uploader("Envie o Caderno de Testes (.xlsx)", type=["xlsx"])
 
 if arquivo_xlsx:
-    df = pd.read_excel(arquivo_xlsx, sheet_name="plano de teste")
+    df = pd.read_excel(arquivo_xlsx, sheet_name=SHEET_NAME)
 
-    # Cenário vem da coluna "Processos"
-    processos = df["Processos"].dropna().unique().tolist()
-    if len(processos) == 1:
-        cenario = processos[0]
-        st.write(f"Cenário: **{cenario}**")
+    # ---------------- Cenário ----------------
+    cenarios = df[COL_PROCESSO].dropna().unique().tolist()
+    if len(cenarios) == 1:
+        cenario = cenarios[0]
+        st.write(f"**Cenário:** {cenario}")
     else:
-        cenario = st.selectbox("Cenário", processos, key="cenario_select")
+        cenario = st.selectbox("Cenário", cenarios)
 
-    # Caso de Teste filtrado pelo Cenário selecionado
-    df_filtrado = df[df["Processos"] == cenario]
-    casos_teste = df_filtrado["Caso de Teste"].dropna().unique().tolist()
-
+    # ---------------- Caso de Teste (filtrado pelo Cenário) ----------------
+    df_filtrado = df[df[COL_PROCESSO] == cenario]
+    casos_teste = df_filtrado[COL_CASO_TESTE].dropna().unique().tolist()
     if len(casos_teste) == 1:
         caso_teste = casos_teste[0]
-        st.write(f"Caso de Teste: **{caso_teste}**")
+        st.write(f"**Caso de Teste:** {caso_teste}")
     else:
-        caso_teste = st.selectbox("Caso de Teste", casos_teste, key=f"caso_teste_select_{cenario}")
+        caso_teste = st.selectbox(
+            "Caso de Teste", casos_teste, key=f"caso_teste_select_{cenario}"
+        )
 
-    qa = st.selectbox("QA", QA_NAMES)
+    # ---------------- QA ----------------
+    if len(QA_NAMES) == 1:
+        qa = QA_NAMES[0]
+        st.write(f"**QA:** {qa}")
+    else:
+        qa = st.selectbox("QA", QA_NAMES)
+
+    # ---------------- DEV / IPC / Squad ----------------
     dev = st.text_input("DEV")
     ipc = st.text_input("IPC")
     squad = st.text_input("Squad", value="AE Contact")
+
+    # ---------------- Status ----------------
+    status = st.selectbox("Status", STATUS_OPCOES)
 
     st.divider()
     st.subheader("Prints de tela")
@@ -150,14 +189,9 @@ if arquivo_xlsx:
     for i in range(st.session_state.num_prints):
         st.markdown(f"**Print {i + 1}**")
         arquivo_print = st.file_uploader(
-            f"Selecione a imagem do print {i + 1}",
-            type=["png", "jpg", "jpeg"],
-            key=f"print_{i}",
+            f"Imagem {i + 1}", type=["png", "jpg", "jpeg"], key=f"print_{i}"
         )
-        legenda_print = st.text_input(
-            f"Comentário do print {i + 1} (opcional)",
-            key=f"legenda_{i}",
-        )
+        legenda_print = st.text_input(f"Legenda (opcional)", key=f"legenda_{i}")
         if arquivo_print is not None:
             st.image(arquivo_print, width=250)
             screenshots.append({"arquivo": arquivo_print, "legenda": legenda_print})
@@ -174,9 +208,11 @@ if arquivo_xlsx:
             "Squad": squad,
         }
 
-        resultado = fill_document(template_bytes, valores, screenshots)
+        resultado = fill_document(template_bytes, valores, status, screenshots)
 
-        nome_arquivo = sanitizar_nome_arquivo(f"Evidencias de teste {squad} {cenario} {caso_teste}") + ".docx"
+        nome_arquivo = sanitize_filename(
+            f"Evidencias de teste {squad} {cenario} {caso_teste.split(' - ')[0]}"
+        ) + ".docx"
 
         st.success("Documento gerado com sucesso.")
         st.download_button(
