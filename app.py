@@ -14,10 +14,7 @@ QA_NAMES = ["Victor Morbach", "Aline Rodrigues Vieira Pinto"]
 st.set_page_config(page_title="Gerador de Evidência de Testes", layout="centered")
 st.title("Gerador de Evidência de Testes - CORSAN")
 
-def sanitizar_nome_arquivo(texto: str) -> str:
-    """Remove caracteres inválidos para nomes de arquivo, mantendo espaços."""
-    return re.sub(r'[\\/:*?"<>|]', "", texto).strip()
-    
+
 def get_unique_cells(row):
     """Remove células repetidas causadas por merge horizontal, mantendo a ordem."""
     unique = []
@@ -54,43 +51,58 @@ def fill_labeled_field(document, label, valor):
     return False
 
 
-def add_screenshots(document, screenshots):
-    if not screenshots:
-        return document
+def fill_status(document, status_valor):
+    """Localiza o parágrafo 'STATUS:' e acrescenta o valor escolhido na mesma linha."""
+    for paragraph in document.paragraphs:
+        if "STATUS" in paragraph.text.strip().upper():
+            run = paragraph.add_run(f" {status_valor}")
+            run.bold = False
+            return True
+    return False
 
-    document.add_page_break()
-    titulo = document.add_paragraph()
-    run_titulo = titulo.add_run("Evidências (Prints)")
-    run_titulo.bold = True
-    run_titulo.font.size = Pt(14)
+
+def add_screenshots_after_table(document, screenshots):
+    """Insere os prints logo após a tabela, um em seguida do outro, sem quebras de página."""
+    if not document.tables or not screenshots:
+        return
+
+    anchor = document.tables[0]._tbl
 
     for idx, item in enumerate(screenshots, start=1):
         arquivo = item["arquivo"]
         legenda = item.get("legenda", "").strip()
-
         arquivo.seek(0)
-        document.add_picture(arquivo, width=Inches(6))
 
-        legenda_paragrafo = document.add_paragraph()
-        legenda_run = legenda_paragrafo.add_run(
-            f"Print {idx}: {legenda}" if legenda else f"Print {idx}"
-        )
-        legenda_run.italic = True
+        img_paragraph = document.add_paragraph()
+        run = img_paragraph.add_run()
+        run.add_picture(arquivo, width=Inches(6))
+        anchor.addnext(img_paragraph._p)
+        anchor = img_paragraph._p
 
-        if idx < len(screenshots):
-            document.add_page_break()
+        cap_paragraph = document.add_paragraph()
+        cap_run = cap_paragraph.add_run(f"Print {idx}: {legenda}" if legenda else f"Print {idx}")
+        cap_run.italic = True
+        cap_run.font.size = Pt(9)
+        anchor.addnext(cap_paragraph._p)
+        anchor = cap_paragraph._p
 
-    return document
+
+def sanitize_filename(texto):
+    """Remove caracteres inválidos para nome de arquivo."""
+    texto = re.sub(r'[\\/*?:"<>|]', "", texto)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
 
 
 def fill_document(template_bytes, valores, screenshots):
     document = Document(io.BytesIO(template_bytes))
 
     for label, valor in valores.items():
-        if valor:
+        if label != "Status":
             fill_labeled_field(document, label, valor)
 
-    add_screenshots(document, screenshots)
+    fill_status(document, valores["Status"])
+    add_screenshots_after_table(document, screenshots)
 
     buffer = io.BytesIO()
     document.save(buffer)
@@ -98,39 +110,43 @@ def fill_document(template_bytes, valores, screenshots):
     return buffer.getvalue()
 
 
+import io  # mantenha este import junto aos demais no topo do arquivo
+
 if not TEMPLATE_PATH.exists():
-    st.error(f"Modelo não encontrado em {TEMPLATE_PATH}. Coloque o arquivo .docx nesse caminho.")
+    st.error("Modelo .docx não encontrado na pasta 'modelo/'.")
     st.stop()
 
 template_bytes = TEMPLATE_PATH.read_bytes()
 
-arquivo_xlsx = st.file_uploader("Envie o arquivo .xlsx do Caderno de Testes", type=["xlsx"])
+arquivo_xlsx = st.file_uploader("Envie o Caderno de Testes (.xlsx)", type=["xlsx"])
 
-if arquivo_xlsx:
+if arquivo_xlsx is not None:
     df = pd.read_excel(arquivo_xlsx, sheet_name="plano de teste")
 
-    # Cenário vem da coluna "Processos"
-    processos = df["Processos"].dropna().unique().tolist()
-    if len(processos) == 1:
-        cenario = processos[0]
-        st.write(f"Cenário: **{cenario}**")
+    cenarios = df["Processos"].dropna().unique().tolist()
+    if len(cenarios) == 1:
+        cenario = cenarios[0]
+        st.write(f"**Cenário:** {cenario}")
     else:
-        cenario = st.selectbox("Cenário", processos, key="cenario_select")
+        cenario = st.selectbox("Cenário", cenarios)
 
-    # Caso de Teste filtrado pelo Cenário selecionado
     df_filtrado = df[df["Processos"] == cenario]
     casos_teste = df_filtrado["Caso de Teste"].dropna().unique().tolist()
-
     if len(casos_teste) == 1:
         caso_teste = casos_teste[0]
-        st.write(f"Caso de Teste: **{caso_teste}**")
+        st.write(f"**Caso de Teste:** {caso_teste}")
     else:
         caso_teste = st.selectbox("Caso de Teste", casos_teste, key=f"caso_teste_select_{cenario}")
 
-    qa = st.selectbox("QA", QA_NAMES)
+    if len(QA_NAMES) == 1:
+        qa = QA_NAMES[0]
+    else:
+        qa = st.selectbox("QA", QA_NAMES)
+
     dev = st.text_input("DEV")
     ipc = st.text_input("IPC")
     squad = st.text_input("Squad", value="CORSAN")
+    status = st.selectbox("Status", STATUS_OPCOES)
 
     st.divider()
     st.subheader("Prints de tela")
@@ -154,13 +170,10 @@ if arquivo_xlsx:
             type=["png", "jpg", "jpeg"],
             key=f"print_{i}",
         )
-        legenda_print = st.text_input(
-            f"Comentário do print {i + 1} (opcional)",
-            key=f"legenda_{i}",
-        )
+        legenda = st.text_input(f"Legenda do print {i + 1} (opcional)", key=f"legenda_{i}")
         if arquivo_print is not None:
+            screenshots.append({"arquivo": arquivo_print, "legenda": legenda})
             st.image(arquivo_print, width=250)
-            screenshots.append({"arquivo": arquivo_print, "legenda": legenda_print})
 
     st.divider()
 
@@ -172,11 +185,14 @@ if arquivo_xlsx:
             "DEV": dev,
             "IPC": ipc,
             "Squad": squad,
+            "Status": status,
         }
 
         resultado = fill_document(template_bytes, valores, screenshots)
 
-        nome_arquivo = sanitizar_nome_arquivo(f"Evidencias de teste {squad} {cenario} {caso_teste}") + ".docx"
+        nome_arquivo = sanitize_filename(
+            f"Evidencias de teste {squad} {cenario} {caso_teste}"
+        ) + ".docx"
 
         st.success("Documento gerado com sucesso.")
         st.download_button(
