@@ -6,7 +6,7 @@ import streamlit as st
 from docx import Document
 from docx.shared import Inches
 
-TEMPLATE_PATH = Path("modelo/Evidencia de Testes - CORSAN - Modelo.docx")
+TEMPLATE_PATH = Path("modelo/Evidencia_de_Testes__CORSAN__Modelo.docx")
 
 QA_NAMES = ["Nome QA 1", "Nome QA 2", "Nome QA 3"]
 
@@ -92,7 +92,7 @@ template_bytes = TEMPLATE_PATH.read_bytes()
 arquivo_xlsx = st.file_uploader("Envie o arquivo .xlsx do Caderno de Testes", type=["xlsx"])
 
 if arquivo_xlsx:
-    df = pd.read_excel(arquivo_xlsx)
+    df = pd.read_excel(arquivo_xlsx, sheet_name="plano de teste")
 
     # Cenário vem da coluna "Processos"
     processos = df["Processos"].dropna().unique().tolist()
@@ -100,15 +100,17 @@ if arquivo_xlsx:
         cenario = processos[0]
         st.write(f"Cenário: **{cenario}**")
     else:
-        cenario = st.selectbox("Cenário", processos)
+        cenario = st.selectbox("Cenário", processos, key="cenario_select")
 
-    # Caso de Teste vem da coluna "Caso de Teste"
-    casos_teste = df["Caso de Teste"].dropna().unique().tolist()
+    # Caso de Teste filtrado pelo Cenário selecionado
+    df_filtrado = df[df["Processos"] == cenario]
+    casos_teste = df_filtrado["Caso de Teste"].dropna().unique().tolist()
+
     if len(casos_teste) == 1:
         caso_teste = casos_teste[0]
         st.write(f"Caso de Teste: **{caso_teste}**")
     else:
-        caso_teste = st.selectbox("Caso de Teste", casos_teste)
+        caso_teste = st.selectbox("Caso de Teste", casos_teste, key=f"caso_teste_select_{cenario}")
 
     qa = st.selectbox("QA", QA_NAMES)
     dev = st.text_input("DEV")
