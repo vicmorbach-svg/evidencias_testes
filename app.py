@@ -6,7 +6,7 @@ import streamlit as st
 from docx import Document
 from docx.shared import Inches
 
-TEMPLATE_PATH = Path("modelo/Evidencia_de_Testes__CORSAN__Modelo.docx")
+TEMPLATE_PATH = Path("modelo/Evidencia de Testes - CORSAN - Modelo.docx")
 
 QA_NAMES = ["Nome QA 1", "Nome QA 2", "Nome QA 3"]
 
