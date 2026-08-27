@@ -1,4 +1,4 @@
-pathlib
-pandas
 streamlit
-docx
+pandas
+python-docx
+openpyxl
