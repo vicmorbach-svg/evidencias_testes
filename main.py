@@ -172,7 +172,7 @@ if arquivo_xlsx:
     # ---------------- Status ----------------
     status = st.selectbox("Status", STATUS_OPCOES)
 
-st.divider()
+    st.divider()
     st.subheader("Prints de tela")
 
     if "num_prints" not in st.session_state:
