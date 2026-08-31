@@ -78,29 +78,34 @@ def set_status(doc, status_valor):
 
 def add_screenshots_after(doc, anchor_element, screenshots):
     """Insere os prints logo após o elemento âncora (ex.: parágrafo do STATUS),
-    sem quebra de página, mantendo a ordem de upload."""
+    sem quebra de página, mantendo a ordem de upload.
+    A legenda fica logo abaixo da imagem correspondente."""
     current_anchor = anchor_element
     for idx, item in enumerate(screenshots, start=1):
         arquivo = item["arquivo"]
         legenda = item.get("legenda", "")
 
-        p_titulo = doc.add_paragraph()
-        run_titulo = p_titulo.add_run(
-            f"Print {idx} - {legenda}" if legenda else f"Print {idx}"
-        )
-        run_titulo.bold = True
-        run_titulo.font.size = Pt(11)
-
+        # 1) Imagem primeiro
         p_imagem = doc.add_paragraph()
         p_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run_imagem = p_imagem.add_run()
         arquivo.seek(0)
         run_imagem.add_picture(arquivo, width=Inches(IMAGEM_LARGURA_POL))
 
-        current_anchor.addnext(p_titulo._p)
-        current_anchor = p_titulo._p
         current_anchor.addnext(p_imagem._p)
         current_anchor = p_imagem._p
+
+        # 2) Legenda logo abaixo da imagem
+        p_legenda = doc.add_paragraph()
+        p_legenda.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_legenda = p_legenda.add_run(
+            f"Print {idx} - {legenda}" if legenda else f"Print {idx}"
+        )
+        run_legenda.italic = True
+        run_legenda.font.size = Pt(10)
+
+        current_anchor.addnext(p_legenda._p)
+        current_anchor = p_legenda._p
 
     return doc
 
