@@ -142,13 +142,13 @@ arquivo_xlsx = st.file_uploader("Envie o Caderno de Testes (.xlsx)", type=["xlsx
 
 xls = pd.ExcelFile(arquivo_xlsx)
 
-if SHEET_NAME in xls.sheet_names:
-    df = pd.read_excel(xls, sheet_name=SHEET_NAME)
-else:
-    st.warning(
-        f"Aba '{SHEET_NAME}' não encontrada. Usando a primeira aba: '{xls.sheet_names[0]}'."
-    )
-    df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+    if SHEET_NAME in xls.sheet_names:
+        df = pd.read_excel(xls, sheet_name=SHEET_NAME)
+    else:
+        st.warning(
+            f"Aba '{SHEET_NAME}' não encontrada. Usando a primeira aba: '{xls.sheet_names[0]}'."
+        )
+        df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
 
     # ---------------- Cenário ----------------
     cenarios = df[COL_PROCESSO].dropna().unique().tolist()
