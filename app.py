@@ -143,7 +143,7 @@ arquivo_xlsx = st.file_uploader("Envie o Caderno de Testes (.xlsx)", type=["xlsx
 if arquivo_xlsx:
     xls = pd.ExcelFile(arquivo_xlsx)
 
-     if SHEET_NAME in xls.sheet_names:
+    if SHEET_NAME in xls.sheet_names:
         df = pd.read_excel(xls, sheet_name=SHEET_NAME)
     else:
         st.warning(
