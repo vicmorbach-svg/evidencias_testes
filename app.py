@@ -143,12 +143,20 @@ arquivo_xlsx = st.file_uploader("Envie o Caderno de Testes (.xlsx)", type=["xlsx
 if arquivo_xlsx:
     xls = pd.ExcelFile(arquivo_xlsx)
 
-    if SHEET_NAME in xls.sheet_names:
+     if SHEET_NAME in xls.sheet_names:
         df = pd.read_excel(xls, sheet_name=SHEET_NAME)
     else:
+        st.warning(
+            f"Aba '{SHEET_NAME}' não encontrada. Usando a primeira aba: '{xls.sheet_names[0]}'."
+        )
         df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
 
-    # ---------------- Cenário ----------------
+        # ---------------- TRATAMENTO DE DADOS ----------------
+        # Preenche as células mescladas (ffill) e remove espaços em branco extras
+    df[COL_PROCESSO] = df[COL_PROCESSO].ffill().astype(str).str.strip()
+    df[COL_CASO_TESTE] = df[COL_CASO_TESTE].astype(str).str.strip()
+
+        # ---------------- Cenário ----------------
     cenarios = df[COL_PROCESSO].dropna().unique().tolist()
     if len(cenarios) == 1:
         cenario = cenarios[0]
@@ -156,9 +164,10 @@ if arquivo_xlsx:
     else:
         cenario = st.selectbox("Cenário", cenarios)
 
-    # ---------------- Caso de Teste (filtrado pelo Cenário) ----------------
+        # ---------------- Caso de Teste (filtrado pelo Cenário) ----------------
     df_filtrado = df[df[COL_PROCESSO] == cenario]
     casos_teste = df_filtrado[COL_CASO_TESTE].dropna().unique().tolist()
+
     if len(casos_teste) == 1:
         caso_teste = casos_teste[0]
         st.write(f"**Caso de Teste:** {caso_teste}")
